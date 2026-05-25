@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 export class ContextService {
+    
     getActiveFileContext() {
         const editor = vscode.window.activeTextEditor;
 

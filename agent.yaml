@@ -1,0 +1,24 @@
+model:
+  preferred: openai:gpt-4o-mini
+
+runtime:
+  timeout: 300000
+  # model: anthropic:claude-haiku-4-5
+
+# spec_version: "0.1.0"
+# name: my-agent
+# version: 1.0.0
+# description: An agent that does things
+
+# model: 
+#   preferred:"anthropic:claude-haiku-4-5"
+#   fallback: ["claude-haiku-4-6"]
+#   constraints:
+#     temperature: 0.7
+#     max_tokens: 4096
+
+# tools: [cli, read, write, memory]
+
+# runtime:
+#   max_turns: 50
+#   timeout: 120

@@ -1,17 +1,17 @@
 import * as vscode from 'vscode';
 import { AISidebarProvider } from './sidebar/AISidebarProvider';
-import { SecretStoreage } from './storage/secrets';
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+	
 
 	const setApiKeyCommand = vscode.commands.registerCommand(
 		"hybrid-ai-assistant.setApiKey",
-		async () =>{
+		async () => {
 			const key = await vscode.window.showInputBox({
 				prompt: "Enter the Anthropic API Key",
 				password: true,
 			});
-			if(!key) return;
+			if (!key) return;
 			await context.secrets.store(
 				"anthropic-api-key",
 				key
@@ -25,7 +25,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const deleteApiKeyCommand = vscode.commands.registerCommand(
 		"hybrid-ai-assistant.deleteApiKey",
-		async () =>{
+		async () => {
 			await context.secrets.delete(
 				"anthropic-api-key"
 			);
@@ -41,19 +41,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const disposable = vscode.commands.registerCommand('hybrid-ai-assistant.helloWorld', () => {
 		vscode.window.showInformationMessage('Hello World from hybrid-ai-assistant!');
-		
+
 	});
 
 	context.subscriptions.push(
 		disposable,
 		setApiKeyCommand,
 		deleteApiKeyCommand,
-        vscode.window.registerWebviewViewProvider(
+		vscode.window.registerWebviewViewProvider(
 			AISidebarProvider.viewType,
 			provider
-		) 
+		)
 	);
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }

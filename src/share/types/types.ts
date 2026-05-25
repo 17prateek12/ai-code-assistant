@@ -1,3 +1,5 @@
+import * as vscode from "vscode";
+
 export interface ChatMessage {
     role:
         | "system"
@@ -60,4 +62,60 @@ export interface IndexedFile {
     fullPath: string;
     extension: string;
     symbols: string[];
+}    
+
+export type ResolvedFileMatch = {
+    uri: vscode.Uri;
+    relativePath: string;
+    score: number;
+}
+
+export type PathResolutionResult = {
+    bestMatch?: ResolvedFileMatch;
+    allMatches: ResolvedFileMatch[];
+    requiresDisambiguation: boolean;
+};
+
+export type WorkflowType =
+
+	| "onboard"
+	| "review"
+	| "debug"
+	| "explain"
+	| null;
+
+export interface RepositoryNode {
+    id: string;
+    filePath: string;
+    symbol?: string;
+    type: "file" | "class" | "function" | "service" | "component";
+    dependencies: string[];
+}
+
+export interface RepositoryGraph {
+    nodes: RepositoryNode[];
+    generatedAt: number;
+}
+
+export interface RepositoryMemory {
+    architecture?: string;
+    conventions?: string[];
+    workflows?: string[];
+    importantFiles?: string[];
+    generatedAt: number;
+}
+
+export interface ReviewIssue {
+    severity: "critical" | "warning" | "info";
+    title: string;
+    description: string;
+    file?: string;
+    suggestion?: string;
+}
+
+export interface ReviewResult {
+    summary: string;
+    issues: ReviewIssue[];
+    score?: number;
+    generatedAt: number;
 }    

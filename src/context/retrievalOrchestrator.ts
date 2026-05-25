@@ -18,6 +18,7 @@ import { ContextRelevanceScore } from "./contextRelevanceScorer";
 import { ContextDeduplicator } from "./contextDeduplicator";
 import { AdaptiveBudgetAllocator } from "./adaptiveBudgetAllocator";
 import { PathIntentParser } from "./pathIntentParser";
+import { RepositoryPathResolver } from "./repositoryPathResolver";
 
 export class RetrievalOrchestrator {
 
@@ -37,7 +38,8 @@ export class RetrievalOrchestrator {
     private contextRelevanceScorer = new ContextRelevanceScore();
     private contextDeduplicator = new ContextDeduplicator();
     private adaptiveBudgetAllocator = new AdaptiveBudgetAllocator();
-    private pathIntentParser = new PathIntentParser()
+    private pathIntentParser = new PathIntentParser();
+    private repositoryPathResolver = new RepositoryPathResolver();
 
     async retrieve(
         query: string
@@ -51,41 +53,99 @@ export class RetrievalOrchestrator {
         console.log("Retrival Mode", retrievalMode);
         const index = await this.symbolIndexer.buildIndex();
         console.log("Explain index ", index);
-        console.log("Requested path ",requestedPath);
+        console.log("Requested path ", requestedPath);
 
-        if(requestedPath){
-            const uri = vscode.Uri.file(
-            path.join(
-                vscode.workspace
-                    .workspaceFolders?.[0]
-                    .uri.fsPath || "",
+        if (requestedPath) {
+            const resolution = await this.repositoryPathResolver.resolve(requestedPath);
+            console.log("Path Resolution:", resolution);
 
-                requestedPath
-            )
-        );
-            try {
-                const content = await this.fileService.readFiles(uri);
-                const finalContent = this.processContent(content,query,requestedSymbol);
+            if (resolution.requiresDisambiguation) {
+                const options = resolution.allMatches
+                    .slice(0, 5)
+                    .map((m, i) => `${i + 1}. ${m.relativePath}`)
+                    .join("\n");
+
                 retrievedContexts.push({
-                    source: uri.fsPath,
+                    source: "SYSTEM",
                     type: "explicit",
-                    content: finalContent
-                })
-                console.log("Resolve Path");
+                    content: `Multiple matching files found:\n\n${options}\n\nAsk user which file they want.`
+                });
 
-            } catch {
-                console.log("PAth Retrieval failed");
+                return {
+                    contexts: retrievedContexts,
+                    confidence: 0.4,
+                    reasons: [
+                        "Multiple matching files found"
+                    ]
+                };
+            }
+
+            if (resolution.bestMatch) {
+                try {
+                    const content = await this.fileService.readFiles(resolution.bestMatch.uri);
+                    const finalContent = this.processContent(
+                        content,
+                        query,
+                        requestedSymbol
+                    );
+
+                    retrievedContexts.push({
+                        source: resolution.bestMatch.relativePath,
+                        type: "explicit",
+                        content: finalContent
+                    });
+
+                    console.log("Resolved files: ", resolution.bestMatch.relativePath);
+                } catch (error) {
+                    console.log("Path Retrieval Failed: ", error);
+                }
             }
         }
-        for (const fileName of requestedFiles) {
-            const matches = await this.fileService.findFileByName(fileName);
-            console.log("Matches found:", matches);
 
-            if (!matches.length) {
+
+        for (const fileName of requestedFiles) {
+
+            const resolution =
+                await this.repositoryPathResolver.resolve(
+                    fileName
+                );
+
+            console.log(
+                "Resolved matches:",
+                resolution
+            );
+
+            if (!resolution.bestMatch) {
                 continue;
             }
 
-            const content = await this.fileService.readFiles(matches[0]);
+            // Multiple similar matches
+            if (resolution.requiresDisambiguation) {
+
+                const options =
+                    resolution.allMatches
+                        .slice(0, 5)
+                        .map(
+                            (m, i) =>
+                                `${i + 1}. ${m.relativePath}`
+                        )
+                        .join("\n");
+
+                retrievedContexts.push({
+                    source: "SYSTEM",
+                    type: "explicit",
+                    content: `Multiple matching files found:\n\n${options}\n\nAsk user which file they want.`
+                });
+
+                continue;
+            }
+
+            const selectedFile = resolution.bestMatch;
+
+            const content = await this.fileService.readFiles(
+                selectedFile.uri
+            );
+
             const symbols = this.symbolParser.extractSymbols(content);
 
             console.log("Detected symbols:", symbols);
@@ -93,27 +153,45 @@ export class RetrievalOrchestrator {
             const finalContent = this.processContent(content, query, requestedSymbol);
 
             retrievedContexts.push({
-                source: matches[0].fsPath,
+                source: selectedFile.relativePath,
                 type: "explicit",
-                content: this.contextBudgetManager.trim(finalContent),
+                content:
+                    this.contextBudgetManager.trim(
+                        finalContent
+                    ),
             });
 
             if (retrievalMode === "exploration") {
-                const imports = this.importParser.extractImports(content);
-                for (const importPath of imports) {
-                    const resolved = await this.dependacyResolver.resolveImport(
-                        matches[0].fsPath,
-                        importPath
+
+                const imports =
+                    this.importParser.extractImports(
+                        content
                     );
+
+                for (const importPath of imports) {
+
+                    const resolved =
+                        await this.dependacyResolver.resolveImport(
+                            selectedFile.uri.fsPath,
+                            importPath
+                        );
 
                     if (!resolved) {
                         continue;
                     }
-                    const importedContent = await this.fileService.readFiles(resolved);
+
+                    const importedContent =
+                        await this.fileService.readFiles(
+                            resolved
+                        );
+
                     retrievedContexts.push({
                         source: resolved.fsPath,
                         type: "semantic",
-                        content: this.contextBudgetManager.trim(importedContent),
+                        content:
+                            this.contextBudgetManager.trim(
+                                importedContent
+                            ),
                     });
                 }
             }
@@ -197,26 +275,39 @@ export class RetrievalOrchestrator {
     ) {
         let finalContent = content;
 
+        let symbolExtracted = false;
+
         // Symbol extraction
         if (requestedSymbol) {
-            const extracted = this.symbolExtractor.extractSymbolBlock(
-                finalContent,
-                requestedSymbol
-            );
+
+            const extracted =
+                this.symbolExtractor.extractSymbolBlock(
+                    finalContent,
+                    requestedSymbol
+                );
 
             if (extracted) {
-                console.log("Extracted symbol block");
+
+                console.log(
+                    "Extracted symbol block"
+                );
+
                 finalContent = extracted;
+
+                symbolExtracted = true;
             }
         }
 
-        // Smart chunk extraction
-        finalContent =
-            this.smartChunkExtractor
-                .extractRelevantContent(
-                    finalContent,
-                    query
-                );
+        // ONLY chunk if symbol NOT extracted
+        if (!symbolExtracted) {
+
+            finalContent =
+                this.smartChunkExtractor
+                    .extractRelevantContent(
+                        finalContent,
+                        query
+                    );
+        }
 
         // Final trimming
         finalContent =

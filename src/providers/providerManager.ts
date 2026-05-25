@@ -1,4 +1,5 @@
 import { AnthropicProvider } from "./anthropic";
+import { OpenAIProvider } from "./openai";
 import { AIProvider } from "../share/types/types";
 
 export class ProviderManager {
@@ -6,6 +7,8 @@ export class ProviderManager {
 
     constructor(apiKey: string) {
         this.provider = new AnthropicProvider(apiKey);
+        //this.provider = new OpenAIProvider(apiKey);
+
     }
 
     getProvider(): AIProvider {
